@@ -1,7 +1,7 @@
 const _ = require('lodash');
 const {Transform} = require('stream');
 const Bromise = require('bluebird');
-const FetchPaginatedStream = require('./src/fetch-paginated-stream');
+const FetchPaginatedStream = require('./src/paginated-fetch-stream');
 
 const numberFetcher = async ({ limit = 12, offset = 0 }) => {
     await Bromise.delay(2000);
@@ -25,4 +25,3 @@ setTimeout(() => {
         // }
     })
 }, 3000)
-

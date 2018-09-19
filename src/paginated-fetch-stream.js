@@ -1,7 +1,7 @@
 const { Readable } = require('stream');
 const _ = require('lodash');
 
-class FetchPaginatedStream extends Readable {
+class PaginatedFetchStream extends Readable {
   constructor(options) {
     super(_.extend({ objectMode: true }, options));
     this.fetcher = options.fetcher;
@@ -23,10 +23,6 @@ class FetchPaginatedStream extends Readable {
 
   log() {
     return `(${_.size(this.buffer)} ${_.head(this.buffer)}<->${_.last(this.buffer)})`
-  }
-  PUSH(chunk, extra) {
-    console.log('PUSH', chunk, extra || '')
-    this.push(chunk)
   }
 
   async _fetch(page, pageSize) {
@@ -52,11 +48,10 @@ class FetchPaginatedStream extends Readable {
   }
 
   _read(size) {
-    console.log('READ')
     if (!_.isEmpty(this.buffer)) {
       const next = _.head(this.buffer)
       this.buffer = _.tail(this.buffer);
-      this.PUSH(next);
+      this.push(next);
       if (_.size(this.buffer) < this.fetchingTreshold && !this.isPrefetching) {
         console.log('PREFETCHING PAGE', this.nextPageToFetch, this.log());
         this.isPrefetching = true;
@@ -67,14 +62,13 @@ class FetchPaginatedStream extends Readable {
       // if (this.isPrefetching) return;
       // this.isPrefetching = true;
       this._fetch(this.nextPageToFetch++, this.pageSize).then(() => {
-        console.log('BUFFER>>>>>>><', this.buffer)
         const next = _.head(this.buffer);
         this.buffer = _.tail(this.buffer);
-        this.PUSH(next, 'POSTFETCH');
+        this.push(next);
         // this.isPrefetching = false;
       })
     }
   }
 }
 
-module.exports = FetchPaginatedStream;
+module.exports = PaginatedFetchStream;
