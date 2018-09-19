@@ -12,6 +12,7 @@ class FetchPaginatedStream extends Readable {
     this.nextPageToFetch = 0;
     this.nextPageToHandle = 0;
     this.prefetchedPages = {};
+    this.isPrefetching = false;
 
     if (options.prefetch) {
       const nPrefetch = Math.round(this.fetchingTreshold / this.pageSize);
@@ -19,22 +20,25 @@ class FetchPaginatedStream extends Readable {
       _.times(nPrefetch, () => this._fetch(this.nextPageToFetch++, this.pageSize))
     }
   }
+  log(){
+    return `(${_.size(this.buffer)} ${_.head(this.buffer)}<->${_.last(this.buffer)})`
+  }
 
   async _fetch(page, pageSize) {
-    console.log('FETCH', this.position)
+    console.log('FETCH', page, `(${this.position}`)
     const offset = this.position;
     this.position += pageSize;
     this.fetcher({ offset, limit: pageSize }).then(res => {
       if (this.nextPageToHandle != page) {
-        console.log('POSTPONE PAGE', page)
+        console.log('POSTPONE PAGE', page, this.log())
         this.prefetchedPages[page] = res;
       } else {
-        console.log('STORE PAGE', page)
+        console.log('STORE PAGE', page, this.log())
         this.nextPageToHandle++;
         this.buffer = _.concat(this.buffer, res);
         // unpile previous pages
         while (this.prefetchedPages[this.nextPageToHandle]) {
-          console.log('UNPILE PAGE', this.nextPageToHandle)
+          console.log('UNPILE PAGE', this.nextPageToHandle, this.log())
           this.buffer = _.concat(this.buffer, this.prefetchedPages[this.nextPageToHandle]);
           delete this.prefetchedPages[page]
           this.nextPageToHandle++;
@@ -48,10 +52,15 @@ class FetchPaginatedStream extends Readable {
       const next = _.head(this.buffer)
       this.buffer = _.tail(this.buffer);
       this.push(next);
+      if (_.size(this.buffer) < this.fetchingTreshold && !this.isPrefetching){
+        console.log('PREFETCHING PAGE', this.nextPageToFetch, this.log());
+        this.isPrefetching = true;
+        this._fetch(this.nextPageToFetch++, this.pageSize).then(() => { this.isPrefetching = false;});
+      }
     } else {
+      console.log('EMERGENCY FETCH OF PAGE', this.nextPageToFetch)
       this._fetch(this.nextPageToFetch++, this.pageSize).then(() => {
-        console.log('BUFFER', this.buffer)
-        const next = _.head(this.buffer)
+        const next = _.head(this.buffer);
         this.buffer = _.tail(this.buffer);
         this.push(next);
       })
