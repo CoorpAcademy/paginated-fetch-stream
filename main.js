@@ -7,7 +7,7 @@ const numberFetcher = async ({ limit = 12, offset = 0 }, cb) => {
 };
 
 
-const readable = new FetchPaginatedStream({ highWaterMark: 30, fetcher: numberFetcher });
+const readable = new FetchPaginatedStream({ highWaterMark: 30, fetcher: numberFetcher, prefetch: true });
 readable.on('data', value => {
     console.log('>>>', value)
     if ((value + 1) % 20 == 0) {

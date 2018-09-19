@@ -6,26 +6,54 @@ class FetchPaginatedStream extends Readable {
     super(_.extend({ objectMode: true }, options));
     this.fetcher = options.fetcher;
     this.position = 0;
+    this.pageSize = options.pageSize || 10;
+    this.fetchingTreshold = options.fetchingTreshold || 30;
     this.buffer = [];
-    this.readCalled = false;
+    this.nextPageToFetch = 0;
+    this.nextPageToHandle = 0;
+    this.prefetchedPages = {};
+
+    if (options.prefetch) {
+      const nPrefetch = Math.round(this.fetchingTreshold / this.pageSize);
+      console.log('PREFETCH', nPrefetch, 'PAGES')
+      _.times(nPrefetch, () => this._fetch(this.nextPageToFetch++, this.pageSize))
+    }
   }
 
-  async _fetch(pageSize) {
+  async _fetch(page, pageSize) {
     console.log('FETCH', this.position)
-    this.fetcher({ offset: this.position, limit: pageSize }).then(res => {
-      this.position += _.size(res);
-      this.buffer = _.concat(this.buffer, res);
+    const offset = this.position;
+    this.position += pageSize;
+    this.fetcher({ offset, limit: pageSize }).then(res => {
+      if (this.nextPageToHandle != page) {
+        console.log('POSTPONE PAGE', page)
+        this.prefetchedPages[page] = res;
+      } else {
+        console.log('STORE PAGE', page)
+        this.nextPageToHandle++;
+        this.buffer = _.concat(this.buffer, res);
+        // unpile previous pages
+        while (this.prefetchedPages[this.nextPageToHandle]) {
+          console.log('UNPILE PAGE', this.nextPageToHandle)
+          this.buffer = _.concat(this.buffer, this.prefetchedPages[this.nextPageToHandle]);
+          delete this.prefetchedPages[page]
+          this.nextPageToHandle++;
+        }
+      }
     });
   }
 
   _read(size) {
     if (!_.isEmpty(this.buffer)) {
-      this.push(_.head(this.buffer));
+      const next = _.head(this.buffer)
       this.buffer = _.tail(this.buffer);
+      this.push(next);
     } else {
-      this._fetch(size).then(() => {
-        this.push(_.head(this.buffer));
+      this._fetch(this.nextPageToFetch++, this.pageSize).then(() => {
+        console.log('BUFFER', this.buffer)
+        const next = _.head(this.buffer)
         this.buffer = _.tail(this.buffer);
+        this.push(next);
       })
     }
   }
