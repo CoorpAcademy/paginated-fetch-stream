@@ -6,14 +6,13 @@ class FetchPaginatedStream extends Readable {
     super(_.extend({ objectMode: true }, options));
     this.fetcher = options.fetcher;
     this.position = 0;
-    this.pageSize = 16
     this.buffer = [];
     this.readCalled = false;
   }
 
-  async _fetch() {
-    // console.log('FETCH', offset)
-    this.fetcher({ offset: this.position }).then(res => {
+  async _fetch(pageSize) {
+    console.log('FETCH', this.position)
+    this.fetcher({ offset: this.position, limit: pageSize }).then(res => {
       this.position += _.size(res);
       this.buffer = _.concat(this.buffer, res);
     });
@@ -24,7 +23,7 @@ class FetchPaginatedStream extends Readable {
       this.push(_.head(this.buffer));
       this.buffer = _.tail(this.buffer);
     } else {
-      this._fetch().then(() => {
+      this._fetch(size).then(() => {
         this.push(_.head(this.buffer));
         this.buffer = _.tail(this.buffer);
       })
