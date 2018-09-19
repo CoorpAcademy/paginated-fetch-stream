@@ -7,7 +7,7 @@ class FetchPaginatedStream extends Readable {
     this.fetcher = options.fetcher;
     this.position = 0;
     this.pageSize = options.pageSize || 10;
-    this.fetchingTreshold = options.fetchingTreshold || 30;
+    this.fetchingTreshold = options.fetchingTreshold || 50;
     this.buffer = [];
     this.nextPageToFetch = 0;
     this.nextPageToHandle = 0;
@@ -20,49 +20,58 @@ class FetchPaginatedStream extends Readable {
       _.times(nPrefetch, () => this._fetch(this.nextPageToFetch++, this.pageSize))
     }
   }
-  log(){
+
+  log() {
     return `(${_.size(this.buffer)} ${_.head(this.buffer)}<->${_.last(this.buffer)})`
+  }
+  PUSH(chunk, extra) {
+    console.log('PUSH', chunk, extra || '')
+    this.push(chunk)
   }
 
   async _fetch(page, pageSize) {
-    console.log('FETCH', page, `(${this.position}`)
+    console.log('FETCH', page, `(${this.position})`)
     const offset = this.position;
     this.position += pageSize;
-    this.fetcher({ offset, limit: pageSize }).then(res => {
-      if (this.nextPageToHandle != page) {
-        console.log('POSTPONE PAGE', page, this.log())
-        this.prefetchedPages[page] = res;
-      } else {
-        console.log('STORE PAGE', page, this.log())
+    const res = await this.fetcher({ offset, limit: pageSize })
+    if (this.nextPageToHandle != page) {
+      console.log('POSTPONE PAGE', page, this.log())
+      this.prefetchedPages[page] = res;
+    } else {
+      console.log('STORE PAGE', page, this.log())
+      this.nextPageToHandle++;
+      this.buffer = _.concat(this.buffer, res);
+      // unpile previous pages
+      while (this.prefetchedPages[this.nextPageToHandle]) {
+        console.log('UNPILE PAGE', this.nextPageToHandle, this.log())
+        this.buffer = _.concat(this.buffer, this.prefetchedPages[this.nextPageToHandle]);
+        delete this.prefetchedPages[page]
         this.nextPageToHandle++;
-        this.buffer = _.concat(this.buffer, res);
-        // unpile previous pages
-        while (this.prefetchedPages[this.nextPageToHandle]) {
-          console.log('UNPILE PAGE', this.nextPageToHandle, this.log())
-          this.buffer = _.concat(this.buffer, this.prefetchedPages[this.nextPageToHandle]);
-          delete this.prefetchedPages[page]
-          this.nextPageToHandle++;
-        }
       }
-    });
+    };
   }
 
   _read(size) {
+    console.log('READ')
     if (!_.isEmpty(this.buffer)) {
       const next = _.head(this.buffer)
       this.buffer = _.tail(this.buffer);
-      this.push(next);
-      if (_.size(this.buffer) < this.fetchingTreshold && !this.isPrefetching){
+      this.PUSH(next);
+      if (_.size(this.buffer) < this.fetchingTreshold && !this.isPrefetching) {
         console.log('PREFETCHING PAGE', this.nextPageToFetch, this.log());
         this.isPrefetching = true;
-        this._fetch(this.nextPageToFetch++, this.pageSize).then(() => { this.isPrefetching = false;});
+        this._fetch(this.nextPageToFetch++, this.pageSize).then(() => { this.isPrefetching = false; });
       }
     } else {
       console.log('EMERGENCY FETCH OF PAGE', this.nextPageToFetch)
+      // if (this.isPrefetching) return;
+      // this.isPrefetching = true;
       this._fetch(this.nextPageToFetch++, this.pageSize).then(() => {
+        console.log('BUFFER>>>>>>><', this.buffer)
         const next = _.head(this.buffer);
         this.buffer = _.tail(this.buffer);
-        this.push(next);
+        this.PUSH(next, 'POSTFETCH');
+        // this.isPrefetching = false;
       })
     }
   }
